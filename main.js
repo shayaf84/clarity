@@ -1,8 +1,9 @@
 /* LOGIC FOR NORMAL BROWSER UTILITY */
 
-
-
 /* LOGIC FOR UPDATING CANVAS ELEMENTS */
+
+/** @type {HTMLButtonElement} */
+const recordButton = document.getElementById("speech-button");
 
 /** @type {HTMLCanvasElement} */
 const canvas = document.getElementById("canvas");
@@ -15,6 +16,25 @@ function resizeCanvasToDisplaySize() {
 }
 
 resizeCanvasToDisplaySize();
+
+function displaySpectrogram({ waveform, spectrogramImageData, spectrogramWidth, spectrogramHeight, saliency, logits, labels }) {
+    const imageData = ctx.createImageData(spectrogramWidth, spectrogramHeight, { colorSpace: "srgb" });
+    imageData.data.set(spectrogramImageData);
+
+    ctx.putImageData(imageData, 0, 0);
+}
+
+let isRecording = false;
+
+recordButton.onclick = () => {
+    if (isRecording) {
+        fetch("/stop").then(r => r.json()).then(displaySpectrogram);
+        isRecording = false;
+    } else {
+        fetch("/start", { method: "POST" }).then(console.log("Started recording!"));
+        isRecording = true;
+    }
+};
 
 const ctx = canvas.getContext("2d");
 ctx.fillStyle = "black";

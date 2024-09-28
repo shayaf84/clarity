@@ -137,7 +137,7 @@ class AudioAnalyzer:
         self.to_spectrogram = torchaudio.transforms.Spectrogram(return_complex=True, power=None).cuda()
         self.from_spectrogram = torchaudio.transforms.InverseSpectrogram().cuda()
 
-        self.noise_rescale = 1.0 / (1.0 + (torch.linspace(0, self.to_spectrogram.n_fft) / self.to_spectrogram.n_fft))
+        self.noise_rescale = 1.0 / torch.linspace(1.0, 16.0, self.to_spectrogram.n_fft // 2 + 1).cuda()
 
         AudioAnalyzer.instance = self
 
@@ -154,6 +154,9 @@ class AudioAnalyzer:
         
         # convert to spectrogram
         spectrogram = self.to_spectrogram(waveform)
+
+        print("Computed spectrogram:", spectrogram.shape)
+        print("Noise rescaler:", self.noise_rescale.shape)
 
         # compute saliency map
         gradient_list = []
@@ -172,11 +175,21 @@ class AudioAnalyzer:
 
         # prepare everything for client
 
+        # rescale
         power_spectrogram = torch.real(spectrogram).pow(2) + torch.imag(spectrogram).pow(2)
+        power_spectrogram = power_spectrogram.squeeze()
+        power_spectrogram = power_spectrogram.clip(0.0, 1.0)
+        power_spectrogram = power_spectrogram * 255
+        power_spectrogram = power_spectrogram.cpu().numpy().astype(np.uint8)
+
+        power_spectrogram = cv2.applyColorMap(power_spectrogram, cv2.COLORMAP_VIRIDIS)
+        power_spectrogram = cv2.cvtColor(power_spectrogram, cv2.COLOR_RGB2RGBA)
 
         return {
             "waveform": waveform.tolist(),
-            "spectrogram": power_spectrogram.tolist(),
+            "spectrogramImageData": power_spectrogram.flatten().tolist(),
+            "spectrogramHeight": power_spectrogram.shape[0],
+            "spectrogramWidth": power_spectrogram.shape[1],
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"]

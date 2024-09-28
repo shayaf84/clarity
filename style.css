@@ -19,6 +19,12 @@ main {
     justify-content: center;
 }
 
+.row {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
 video {
     margin: 3rem;
     border: 1px solid blue;
@@ -28,5 +34,24 @@ canvas {
     margin: 3rem;
     border: 1px solid green;
     width: 75%;
-    height: 75%;
+    height: 400px;
+}
+
+#speech-button {
+    background: none;
+	color: inherit;
+    border: 3px solid rgb(200, 50, 50);
+	font: inherit;
+	cursor: pointer;
+	outline: inherit;
+    width: 0px;
+    height: 0px;
+    padding: 15px;
+    border-color: red;
+    border-radius: 25%;
+    transition: 1s ease
+}
+
+#speech-button:hover {
+    border-radius: 50%;
 }
