@@ -55,7 +55,7 @@ train_data, val_data = train_test_split(train_csv, test_size = 0.2, random_state
 model_path = 'google/vit-base-patch16-224' #'WinKawaks/vit-tiny-patch16-224'
 processor = ViTImageProcessor.from_pretrained(model_path)
 model = ViTForImageClassification.from_pretrained(model_path,num_labels=2,ignore_mismatched_sizes=True).cuda()
-feature_extractor = ViTFeatureExtractor.from_pretrained(model_path) 
+feature_extractor = ViTFeatureExtractor.from_pretrained(model_path)
 image_mean, image_std = processor.image_mean, processor.image_std
 
 # turn off most of model layers
@@ -82,7 +82,7 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True)
 ##### Training Loop
 optimizer = Adam(model.parameters(),1e-5)
 loss_fn = torch.nn.CrossEntropyLoss()
-epochs = 5
+epochs = 7
 epoch_number = 0
 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 writer = SummaryWriter('runs/fashion_trainer_{}'.format(timestamp))
@@ -127,8 +127,8 @@ def run_test():
             inputs, labels = data
             inputs = inputs.cuda()
             labels = labels.cuda()
-            outputs = model(inputs).logits
-            loss = loss_fn(outputs, labels)
+            outputs = model(inputs).logits.argmax(dim=-1)
+            loss = torch.mean(torch.where(outputs == labels, 1.0, 0.0))
             total_test_loss += loss.item()
     avg_test_loss = total_test_loss / (i+1)
     return avg_test_loss
@@ -146,4 +146,8 @@ for epoch in range(epochs):
 
     print('Loss train {} validation {} test {}'.format(avg_loss, avg_val_loss, avg_test_loss))
 
-torch.save(model, "./ckpt_google_vit_base_2.bin")
+dst_repo = "vit-base-patch16-224-fatigue"
+
+model.push_to_hub(dst_repo)
+processor.push_to_hub(dst_repo)
+feature_extractor.push_to_hub(dst_repo)
