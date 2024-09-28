@@ -1,14 +1,13 @@
+
+
 .title{
     font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
     background-color: rgb(184, 184, 184);
-    border-width: 2px;
-    border-color: rgb(150, 150, 150);
     margin: 2px;
     padding: 5px;
     font-size: large;
     border-radius: 2px;
-    top:0px;
-    position:sticky;
+    position: sticky;
 }
 
 .transcript-body{
@@ -17,19 +16,34 @@
     margin: 2px
 }
 
-.css-grid {
+.css-grid1 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr;
-    height:100vhs
+    height:100vh;
+}
+
+.flex1 {
+    display: flex;
+    flex-direction: column;
+    height: 1fr;
+}
+
+.feature-box{
+    display: flex;
+    flex-direction: column;
+    background-color: rgb(233, 233, 233);
+    padding: 5px;
+    margin: 2px;
+    border-radius: 5px;
 }
 
 .speech-stream {
     padding: 5px;
     margin:2px;
-    background-color: aquamarine;
-    width:100%;
-    height:100%;
+    background-color: rgb(253, 253, 253);
+    width: calc(100% - 14px);
+    height: calc(20% - 35px);
 }
 
 .notes-box {

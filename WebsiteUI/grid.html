@@ -7,7 +7,7 @@
     </head>
 
     <body>
-        <div class = "css-grid">
+        <div class = "css-grid1">
              <div style = "background-color: lightblue;">
                 <div> <!--Video-->
                     <video class = "video" src = "movie.mov" width = 100% controls></video>
@@ -27,7 +27,7 @@
                 </div>
             </div>
 
-            <div style = "height: 1fr;"> 
+            <div style = "height: 1fr"> 
                 <div style = "height: 40vh; overflow:scroll"> <!--Transcript box-->
                     <p class = "title">
                         Conversation transcription
@@ -40,10 +40,20 @@
                     </div>             
                 </div>
 
-                <div style = "height: 20vh;"> <!--Sound stream-->
-                    <canvas class = "speech-stream">
+                <div class = "feature-box" style = "height: 20vh;"> <!--Sound stream-->
+                    
+                    <div>
+                        <p class = "title">
+                            Sound stream
+                        </p>
+                    </div>
+                   
+                    <div>
+                        <canvas class = "speech-stream">
 
-                    </canvas>
+                        </canvas>
+                    </div>
+                    
                 </div>
 
                 <div style = "height: 20vh;"> <!--Time graph stream-->
