@@ -44,7 +44,7 @@ class VideoTransformTrack(MediaStreamTrack):
         self.face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
         
         self.processor = ViTImageProcessor.from_pretrained(self.model_path)
-        self.model = ViTForImageClassification.from_pretrained(self.model_path,num_labels=2,ignore_mismatched_sizes=True)
+        self.model = ViTForImageClassification.from_pretrained(self.model_path,num_labels=2,ignore_mismatched_sizes=True).cuda()
         self.feature_extractor = ViTFeatureExtractor.from_pretrained(self.model_path) 
         self.image_mean, self.image_std = self.processor.image_mean, self.processor.image_std
 
@@ -55,46 +55,54 @@ class VideoTransformTrack(MediaStreamTrack):
             Normalize(mean=self.image_mean,std=self.image_std)
 
         ])
-        self.class_value = None
-        
+        self.class_value = 1
+        self.frame_count = 0
 
     def crop_bounding_box(self, img, x, y, w, h):
         return img[y:y+h,x:x+w]
 
     async def recv(self):
         # Retrieve the next input frame
-        frame: VideoFrame = await self.track.recv()
-        img: np.ndarray = frame.to_ndarray(format="bgr24")
+        video_frame: VideoFrame = await self.track.recv()
+        outgoing_image: np.ndarray = video_frame.to_ndarray(format="bgr24")
     
         # TODO: Detect if a face is present in the image
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(outgoing_image, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, 1.1,4)
         # TODO: Crop and reshape the bounding box to 224 x 224
         for (x,y,w,h) in faces:
-            cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
-            cropped_image = VideoTransformTrack.instance.crop_bounding_box(frame,x,y,w,h)
-            cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
-            cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_GRAY2RGB)
-            cropped_pil = Image.fromarray(cropped_image)
-            transformed_pil = self.transform(cropped_pil)
-            input_tensor = transformed_pil.unsqueeze(0)
+            cv2.rectangle(outgoing_image,(x,y),(x+w,y+h),(255,0,0),2)
+            
+            # TODO: Pass face image into vision transformer model
+            if self.frame_count % 6 == 0:
+                cropped_image = self.crop_bounding_box(outgoing_image,x,y,w,h)
+                cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+                cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_GRAY2RGB)
+                cropped_pil = Image.fromarray(cropped_image)
+                transformed_pil = self.transform(cropped_pil)
+                input_tensor = transformed_pil.unsqueeze(0)
+                with torch.no_grad():
+                    input_tensor = input_tensor.cuda()
+                    output_logits = self.model(input_tensor).logits.cpu()
+                predicted_class = torch.argmax(output_logits).item()
+                if predicted_class == 1:
+                    self.class_value = "Active"
+                elif predicted_class == 0:
+                    self.class_value = "Fatigued"
+            
+            # TODO: Compute saliency map for face
 
-        # TODO: Pass face image into vision transformer model
-            with torch.no_grad():
-                outputs = self.model(input_tensor)
-            predicted_class = torch.argmax(outputs.logits).item()
-            if predicted_class == 1:
-                self.class_value = "Active"
-            elif predicted_class == 0:
-                self.class_value = "Fatigued"
-        # TODO: Compute saliency map for face
+            # TODO: Draw bounding box and saliency map onto image
+            cv2.putText(outgoing_image, f'{self.class_value}',(x,y),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,0),2)
+            
 
-        # TODO: Draw bounding box and saliency map onto image
-        cv2.putText(img,f'{self.class_value}',(x,y),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,0),2)
+        self.frame_count += 1
+
         # Reconstruct and return the new frame
-        new_frame = VideoFrame.from_ndarray(img, format="bgr24")
-        new_frame.pts = frame.pts
-        new_frame.time_base = frame.time_base
+        new_frame = VideoFrame.from_ndarray(outgoing_image, format="bgr24")
+        new_frame.pts = video_frame.pts
+        new_frame.time_base = video_frame.time_base
+
         return new_frame
 
 #
@@ -210,6 +218,7 @@ class AudioAnalyzer:
         # rescale
         power_spectrogram = torch.real(spectrogram).pow(2) + torch.imag(spectrogram).pow(2)
         power_spectrogram = power_spectrogram.squeeze()
+        power_spectrogram /= 2
         power_spectrogram = power_spectrogram.clip(0.0, 1.0)
         power_spectrogram = power_spectrogram * 255
         power_spectrogram = power_spectrogram.cpu().numpy().astype(np.uint8)
