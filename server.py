@@ -1,3 +1,10 @@
+"""
+routes:
+ - webrtc connection
+ - start recording = simply toggles boolean variable
+ - stop recording = toggles off, closes container, saves file, loads, runs analysis with pytorch, returns analysis
+"""
+
 import argparse
 import asyncio
 import json
@@ -8,13 +15,16 @@ import uuid
 import av.container
 import cv2
 
+import queue
+
 import torch
 import torchaudio
 import numpy as np
+from test_ml import run_analysis
 
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaRecorder, MediaRelay
+from aiortc.contrib.media import MediaRecorder, MediaRelay, MediaRecorderContext, MediaStreamError, MediaBlackhole
 
 import av
 from av.audio.frame import AudioFrame
@@ -25,6 +35,8 @@ ROOT = os.path.dirname(__file__)
 logger = logging.getLogger("pc")
 pcs = set()
 relay = MediaRelay()
+
+is_recording = False
 
 class VideoTransformTrack(MediaStreamTrack):
     """
@@ -52,6 +64,101 @@ class VideoTransformTrack(MediaStreamTrack):
 
         return new_frame
 
+class CustomMediaRecorder:
+    def __init__(self, finished_queue: queue.Queue):
+        self.counter = 0
+
+        self.finished_queue = finished_queue
+
+        container, filename = self.make_container()
+
+        self.container = container
+        self.filename = filename
+
+        self.track = None
+    
+    def make_container(self):
+        filename = f"recording{self.counter:03}.mp3"
+        container = av.open(file=filename, mode="w")
+        self.counter += 1
+        return container, filename
+    
+    def addTrack(self, track: MediaStreamTrack) -> None:
+        """
+        Add a track to be recorded.
+
+        :param track: A :class:`aiortc.MediaStreamTrack`.
+        """
+        self.track = track
+        if track.kind == "audio":
+            if self.container.format.name in ("wav", "alsa", "pulse"):
+                codec_name = "pcm_s16le"
+            elif self.container.format.name == "mp3":
+                codec_name = "mp3"
+            else:
+                codec_name = "aac"
+            stream = self.container.add_stream(codec_name)
+        else:
+            if self.container.format.name == "image2":
+                stream = self.container.add_stream("png", rate=30)
+                stream.pix_fmt = "rgb24"
+            else:
+                stream = self.container.add_stream("libx264", rate=30)
+                stream.pix_fmt = "yuv420p"
+        self.track = MediaRecorderContext(stream)
+
+    async def start(self) -> None:
+        """
+        Start recording.
+        """
+        for track, context in self.__tracks.items():
+            if context.task is None:
+                context.task = asyncio.ensure_future(self.__run_track(track, context))
+    
+    async def stop(self) -> None:
+        """
+        Stop recording.
+        """
+        for i, container in enumerate(self.containers):
+            for track, context in self.__tracks.items():
+                if context.task is not None:
+                    context.task.cancel()
+                    context.task = None
+                    for packet in context.stream.encode(None):
+                        container.mux(packet)
+            
+            self.__tracks = {}
+
+            container.close()
+            self.containers[i] = None
+
+    async def __run_track(
+        self, track: MediaStreamTrack, context: MediaRecorderContext
+    ) -> None:
+        while True:
+            try:
+                frame = await track.recv()
+            except MediaStreamError:
+                return
+
+            if not context.started:
+                # adjust the output size to match the first frame
+                if isinstance(frame, VideoFrame):
+                    context.stream.width = frame.width
+                    context.stream.height = frame.height
+                context.started = True
+
+            for packet in context.stream.encode(frame):
+                self.container.mux(packet)
+            
+            # if we detect our global boolean is false
+            if not is_recording:
+                self.container.close()
+                self.finished_queue.put(self.filename)
+                self.counter += 1
+                # reset container
+            
+                
 class AudioConsumer(MediaStreamTrack):
     """
     Code used for audio processing
@@ -67,7 +174,9 @@ class AudioConsumer(MediaStreamTrack):
     
     async def recv(self):
         frame: AudioFrame = await self.track.recv()
+        """
         samples = frame.to_ndarray()
+        
         rate = frame.sample_rate
 
         self.accumulated_frames += [samples]
@@ -86,6 +195,7 @@ class AudioConsumer(MediaStreamTrack):
         #       to continually feed into transformer model
 
         print(f"received audio frame: {samples.shape} at {rate} Hz")
+        """
         return frame
     
 async def index(request):
@@ -95,6 +205,22 @@ async def index(request):
 async def javascript(request):
     content = open(os.path.join(ROOT, "client.js"), "r").read()
     return web.Response(content_type="application/javascript", text=content)
+
+async def start_recording(request):
+    # TODO: tell the media recorder to START
+
+    pass
+
+async def stop_recording(request):
+    # TODO: tell media recorder to STOP, then wait for filename, then process w pytorch, then return goodies
+    
+    filename = None
+
+    analysis = run_analysis(filename)
+
+    payload = json.dumps(analysis)
+
+    return web.Response(content_type="application/json", text=payload)
 
 async def offer(request):
     params = await request.json()
@@ -112,9 +238,10 @@ async def offer(request):
     # prepare local media
     #player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
     #if args.record_to:
-    recorder = MediaRecorder("recording-%3d.mp3", format="mp3")
+    #filename_queue = queue.Queue()
+    #recorder = CustomMediaRecorder(filename_queue)
     #else:
-    #recorder = MediaBlackhole()
+    recorder = MediaBlackhole()
 
     @pc.on("datachannel")
     def on_datachannel(channel):
@@ -137,9 +264,9 @@ async def offer(request):
         if track.kind == "audio":
             #pc.addTrack(player.audio)
             recorder.addTrack(track)
-            #pc.addTrack(
-            #    AudioConsumer(track)
-            #)
+            pc.addTrack(
+                AudioConsumer(relay.subscribe(track))
+            )
             # this is where we need to consume audio track
         elif track.kind == "video":
             pc.addTrack(
