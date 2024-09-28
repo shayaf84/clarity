@@ -4,12 +4,35 @@
 
 /* LOGIC FOR UPDATING CANVAS ELEMENTS */
 
+/** @type {HTMLCanvasElement} */
+const canvas = document.getElementById("canvas");
 
+function resizeCanvasToDisplaySize() {
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+
+    console.log(`Resized canvas to ${canvas.width} by ${canvas.height}`)
+}
+
+resizeCanvasToDisplaySize();
+
+const ctx = canvas.getContext("2d");
+ctx.fillStyle = "black";
+ctx.fillRect(100, 100, 200, 200);
 
 /* LOGIC FOR WEBRTC VIDEO AND AUDIO STREAMING */
 
 class WebRTCManager {
+    /**
+     * @type {WebRTCManager} Saved instance
+     */
+    static instance;
 
+    /**
+     * Construct a new WebRTC manager. Initializes the RTCPeerConnection object
+     * and prepares the callbacks necessary to direct incoming video streams
+     * to the corresponding <video> element.
+     */
     constructor() {
         this.pc = new RTCPeerConnection({
             sdpSemantics: "unified-plan",
@@ -23,8 +46,13 @@ class WebRTCManager {
                 document.getElementById("video").srcObject = event.streams[0];
             }
         });
+
+        WebRTCManager.instance = this;
     }
 
+    /**
+     * Start the WebRTC video stream
+     */
     async start() {
 
         const userMedia = await navigator.mediaDevices.getUserMedia({
@@ -76,6 +104,9 @@ class WebRTCManager {
         await this.pc.setRemoteDescription(responseJson);
     }
 
+    /**
+     * Stop the WebRTC video stream
+     */
     async stop() {
         if (this.pc.getTransceivers) {
             this.pc.getTransceivers().forEach((transceiver) => {
@@ -92,4 +123,5 @@ class WebRTCManager {
 }
 
 /* Let's light this candle! */
+
 (new WebRTCManager()).start().then(() => console.log("Connected!"));

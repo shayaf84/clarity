@@ -1,0 +1,32 @@
+* {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+main {
+    width: 100vw;
+    height: 100vh;
+    border: 1px solid red;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+video {
+    margin: 3rem;
+    border: 1px solid blue;
+}
+
+canvas {
+    margin: 3rem;
+    border: 1px solid green;
+    width: 75%;
+    height: 75%;
+}
