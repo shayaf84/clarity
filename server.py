@@ -3,15 +3,21 @@ import asyncio
 import json
 import logging
 import os
-import ssl
 import uuid
 
+import av.container
 import cv2
+
+import torch
+import torchaudio
+import numpy as np
 
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder, MediaRelay
+from aiortc.contrib.media import MediaRecorder, MediaRelay
 
+import av
+from av.audio.frame import AudioFrame
 from av.video.frame import VideoFrame
 
 ROOT = os.path.dirname(__file__)
@@ -21,6 +27,10 @@ pcs = set()
 relay = MediaRelay()
 
 class VideoTransformTrack(MediaStreamTrack):
+    """
+    Code used for video processing, i.e. face bounding box, fatigue detection, etc.
+    """
+    
     kind = "video"
 
     def __init__(self, track, transform):
@@ -39,8 +49,45 @@ class VideoTransformTrack(MediaStreamTrack):
         new_frame = VideoFrame.from_ndarray(img, format="bgr24")
         new_frame.pts = frame.pts
         new_frame.time_base = frame.time_base
+
         return new_frame
 
+class AudioConsumer(MediaStreamTrack):
+    """
+    Code used for audio processing
+    """
+
+    kind = "audio"
+    
+    def __init__(self, track):
+        super().__init__()
+        self.track = track
+        self.accumulated_frames = []
+        self.counter = 0
+    
+    async def recv(self):
+        frame: AudioFrame = await self.track.recv()
+        samples = frame.to_ndarray()
+        rate = frame.sample_rate
+
+        self.accumulated_frames += [samples]
+        if len(self.accumulated_frames) > 100:
+            self.accumulated_frames.pop(0)
+
+        self.counter += 1
+        if self.counter % 200 == 0:
+            all_samples = np.concatenate(self.accumulated_frames, axis=1)
+            print(f"all samples are {all_samples.shape}")
+
+            all_samples = torch.from_numpy(all_samples)
+            torchaudio.save("test.wav", all_samples, 48000)
+
+        # todo: keep a list of the last N seconds of audio
+        #       to continually feed into transformer model
+
+        print(f"received audio frame: {samples.shape} at {rate} Hz")
+        return frame
+    
 async def index(request):
     content = open(os.path.join(ROOT, "index.html"), "r").read()
     return web.Response(content_type="text/html", text=content)
@@ -63,11 +110,11 @@ async def offer(request):
     log_info("Created for %s", request.remote)
 
     # prepare local media
-    player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
-    if args.record_to:
-        recorder = MediaRecorder(args.record_to)
-    else:
-        recorder = MediaBlackhole()
+    #player = MediaPlayer(os.path.join(ROOT, "demo-instruct.wav"))
+    #if args.record_to:
+    recorder = MediaRecorder("recording-%3d.mp3", format="mp3")
+    #else:
+    #recorder = MediaBlackhole()
 
     @pc.on("datachannel")
     def on_datachannel(channel):
@@ -88,16 +135,20 @@ async def offer(request):
         log_info("Track %s received", track.kind)
 
         if track.kind == "audio":
-            pc.addTrack(player.audio)
+            #pc.addTrack(player.audio)
             recorder.addTrack(track)
+            #pc.addTrack(
+            #    AudioConsumer(track)
+            #)
+            # this is where we need to consume audio track
         elif track.kind == "video":
             pc.addTrack(
                 VideoTransformTrack(
                     relay.subscribe(track), transform=params["video_transform"]
                 )
             )
-            if args.record_to:
-                recorder.addTrack(relay.subscribe(track))
+            #if args.record_to:
+            #    recorder.addTrack(relay.subscribe(track))
 
         @track.on("ended")
         async def on_ended():
@@ -134,9 +185,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
+    
     parser.add_argument(
         "--port", type=int, default=8080, help="Port for HTTP server (default: 8080)"
     )
+    
     parser.add_argument("--verbose", "-v", action="count", default=True)
     args = parser.parse_args()
 
@@ -145,11 +198,7 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO)
 
-    if args.cert_file:
-        ssl_context = ssl.SSLContext()
-        ssl_context.load_cert_chain(args.cert_file, args.key_file)
-    else:
-        ssl_context = None
+    ssl_context = None
 
     app = web.Application()
     app.on_shutdown.append(on_shutdown)
