@@ -68,7 +68,7 @@ class VideoTransformTrack(MediaStreamTrack):
     
         # TODO: Detect if a face is present in the image
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_cascade.detectMultiScale(self.gray, 1.1,4)
+        faces = self.face_cascade.detectMultiScale(gray, 1.1,4)
         # TODO: Crop and reshape the bounding box to 224 x 224
         for (x,y,w,h) in faces:
             cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
