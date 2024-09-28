@@ -37,6 +37,7 @@ pcs = set()
 relay = MediaRelay()
 
 is_recording = False
+custom_recorder = None
 
 class VideoTransformTrack(MediaStreamTrack):
     """
@@ -65,18 +66,35 @@ class VideoTransformTrack(MediaStreamTrack):
         return new_frame
 
 class CustomMediaRecorder:
-    def __init__(self, finished_queue: queue.Queue):
+    def __init__(self):
         self.counter = 0
-
-        self.finished_queue = finished_queue
 
         container, filename = self.make_container()
 
         self.container = container
         self.filename = filename
 
+        self.recording = False
+
         self.track = None
     
+    def start_recording(self):
+        self.recording = True
+
+    def stop_recording(self):
+        self.container.close()
+        old_filename = self.filename
+
+        container, filename = self.make_container()
+        self.container = container
+        self.filename = filename
+
+        self.addTrack(self.track)
+
+        self.recording = False
+
+        return old_filename
+
     def make_container(self):
         filename = f"recording{self.counter:03}.mp3"
         container = av.open(file=filename, mode="w")
@@ -89,7 +107,7 @@ class CustomMediaRecorder:
 
         :param track: A :class:`aiortc.MediaStreamTrack`.
         """
-        self.track = track
+
         if track.kind == "audio":
             if self.container.format.name in ("wav", "alsa", "pulse"):
                 codec_name = "pcm_s16le"
@@ -105,60 +123,50 @@ class CustomMediaRecorder:
             else:
                 stream = self.container.add_stream("libx264", rate=30)
                 stream.pix_fmt = "yuv420p"
-        self.track = MediaRecorderContext(stream)
+        
+        self.track = track
+        self.context = MediaRecorderContext(stream)
 
     async def start(self) -> None:
         """
         Start recording.
         """
-        for track, context in self.__tracks.items():
-            if context.task is None:
-                context.task = asyncio.ensure_future(self.__run_track(track, context))
+        if self.context.task is None:
+            self.context.task = asyncio.ensure_future(self.__run_track(self.track, self.context))
     
     async def stop(self) -> None:
         """
         Stop recording.
         """
         for i, container in enumerate(self.containers):
-            for track, context in self.__tracks.items():
-                if context.task is not None:
-                    context.task.cancel()
-                    context.task = None
-                    for packet in context.stream.encode(None):
-                        container.mux(packet)
+            context = self.track
+            if context.task is not None:
+                context.task.cancel()
+                context.task = None
+                for packet in context.stream.encode(None):
+                    container.mux(packet)
             
-            self.__tracks = {}
+            self.track = None
+            self.context = None
 
             container.close()
-            self.containers[i] = None
+
+            self.container = None
 
     async def __run_track(
         self, track: MediaStreamTrack, context: MediaRecorderContext
     ) -> None:
         while True:
-            try:
-                frame = await track.recv()
-            except MediaStreamError:
-                return
+            frame = await track.recv()
 
             if not context.started:
                 # adjust the output size to match the first frame
-                if isinstance(frame, VideoFrame):
-                    context.stream.width = frame.width
-                    context.stream.height = frame.height
                 context.started = True
 
-            for packet in context.stream.encode(frame):
-                self.container.mux(packet)
-            
-            # if we detect our global boolean is false
-            if not is_recording:
-                self.container.close()
-                self.finished_queue.put(self.filename)
-                self.counter += 1
-                # reset container
-            
-                
+            if self.recording:
+                for packet in context.stream.encode(frame):
+                    self.container.mux(packet)
+                       
 class AudioConsumer(MediaStreamTrack):
     """
     Code used for audio processing
@@ -208,18 +216,14 @@ async def javascript(request):
 
 async def start_recording(request):
     # TODO: tell the media recorder to START
-
-    pass
+    custom_recorder.start_recording()
+    return web.Response(content_type="application/json", text="{\"success\": \"true\"}")
 
 async def stop_recording(request):
     # TODO: tell media recorder to STOP, then wait for filename, then process w pytorch, then return goodies
-    
-    filename = None
-
+    filename = custom_recorder.stop_recording()
     analysis = run_analysis(filename)
-
     payload = json.dumps(analysis)
-
     return web.Response(content_type="application/json", text=payload)
 
 async def offer(request):
@@ -241,7 +245,8 @@ async def offer(request):
     #filename_queue = queue.Queue()
     #recorder = CustomMediaRecorder(filename_queue)
     #else:
-    recorder = MediaBlackhole()
+    global custom_recorder
+    custom_recorder = CustomMediaRecorder()
 
     @pc.on("datachannel")
     def on_datachannel(channel):
@@ -263,7 +268,7 @@ async def offer(request):
 
         if track.kind == "audio":
             #pc.addTrack(player.audio)
-            recorder.addTrack(track)
+            custom_recorder.addTrack(track)
             pc.addTrack(
                 AudioConsumer(relay.subscribe(track))
             )
@@ -280,11 +285,11 @@ async def offer(request):
         @track.on("ended")
         async def on_ended():
             log_info("Track %s ended", track.kind)
-            await recorder.stop()
+            await custom_recorder.stop()
 
     # handle offer
     await pc.setRemoteDescription(offer)
-    await recorder.start()
+    await custom_recorder.start()
 
     # send answer
     answer = await pc.createAnswer()
@@ -331,6 +336,8 @@ if __name__ == "__main__":
     app.on_shutdown.append(on_shutdown)
     app.router.add_get("/", index)
     app.router.add_get("/client.js", javascript)
+    app.router.add_get("/stop", stop_recording)
+    app.router.add_post("/start", start_recording)
     app.router.add_post("/offer", offer)
     web.run_app(
         app, access_log=None, host=args.host, port=args.port, ssl_context=ssl_context

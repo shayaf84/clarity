@@ -5,8 +5,47 @@ from transformers import HubertForSequenceClassification, Wav2Vec2FeatureExtract
 
 from matplotlib import pyplot as plt
 
+to_spectrogram = torchaudio.transforms.Spectrogram(return_complex=True, power=None).cuda()
+from_spectrogram = torchaudio.transforms.InverseSpectrogram().cuda()
+
+model_id = "superb/hubert-base-superb-er"
+model = HubertForSequenceClassification.from_pretrained(model_id).cuda()
+
+
 def run_analysis(filename: str):
-    pass
+
+    # Load and process waveform, resample to 16 kHz
+    waveform, samplerate = torchaudio.load(filename)
+    resample = torchaudio.transforms.Resample(orig_freq=samplerate, new_freq=16000)
+    waveform = waveform[0:1]
+    waveform: torch.Tensor = resample(waveform)
+
+    # Run waveform through model to obtain predictions
+    orig_logits = model(waveform).logits
+
+    # 
+    spectrogram = to_spectrogram(waveform)
+    gradient_list = []
+    for i in range(20):
+        noisy_data = torch.randn_like(spectrogram) * 0.001
+        noisy_data = spectrogram + noisy_data
+        noisy_data.requires_grad = True
+        noisy_waveform = from_spectrogram(noisy_data)
+        noisy_label = model(noisy_waveform).logits.max()
+        model.zero_grad()
+        noisy_label.backward()
+        noisy_gradient = noisy_data.grad.clone().squeeze()
+        gradient_list += [noisy_gradient]
+
+    values_list = waveform[0].tolist()
+    mean_gradients = torch.mean(torch.stack(gradient_list), dim=0).detach().abs().cpu()
+
+
+
+    return {
+        "waveform": values_list,
+        
+    }
 
 def main():
     
@@ -21,8 +60,7 @@ def main():
     waveform = waveform[0:1]
     waveform = resample(waveform).cuda()
 
-    to_spectrogram = torchaudio.transforms.Spectrogram(return_complex=True, power=None).cuda()
-    from_spectrogram = torchaudio.transforms.InverseSpectrogram().cuda()
+    
 
     spectrogram = to_spectrogram(waveform)
     print("spectrogram:", spectrogram.shape)
