@@ -218,13 +218,10 @@ async def post_offer(request):
         log_info("Track %s received", track.kind)
 
         if track.kind == "audio":
-            custom_recorder.addTrack(track)
+            custom_recorder.add_track(track)
         
         elif track.kind == "video":
-            pc.addTrack(VideoTransformTrack(
-                relay.subscribe(track), 
-                transform=params["video_transform"]
-            ))
+            pc.addTrack(VideoTransformTrack(relay.subscribe(track)))
 
         @track.on("ended")
         async def on_ended():
