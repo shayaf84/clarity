@@ -133,30 +133,53 @@ class AudioAnalyzer:
 
     def __init__(self):
         # TODO: load Hugging Face models
-        self.hubert = HubertForSequenceClassification.from_pretrained("superb/hubert-base-superb-er")
+        self.hubert = HubertForSequenceClassification.from_pretrained("superb/hubert-base-superb-er").cuda()
+        self.to_spectrogram = torchaudio.transforms.Spectrogram(return_complex=True, power=None).cuda()
+        self.from_spectrogram = torchaudio.transforms.InverseSpectrogram().cuda()
 
+        self.noise_rescale = 1.0 / (1.0 + (torch.linspace(0, self.to_spectrogram.n_fft) / self.to_spectrogram.n_fft))
 
         AudioAnalyzer.instance = self
 
     def run_audio_analysis(self, filename: str):
-        # TODO: load audio file
+        # load audio file
         waveform, samplerate = torchaudio.load(filename)
         resampler = torchaudio.transforms.Resample(orig_freq=samplerate, new_freq=16000)
         waveform = waveform[0:1]
-        waveform: torch.Tensor = resampler.forward(waveform)
+        waveform: torch.Tensor = resampler.forward(waveform).cuda()
 
-        # TODO: obtain initial diagnosis
+        # obtain initial diagnosis
+        with torch.no_grad():
+            logits: torch.Tensor = self.hubert(waveform).logits
+        
+        # convert to spectrogram
+        spectrogram = self.to_spectrogram(waveform)
 
-        # TODO: convert to spectrogram
+        # compute saliency map
+        gradient_list = []
+        for i in range(10):
+            noisy_data = torch.randn_like(spectrogram) * 0.01 * self.noise_rescale.unsqueeze(0).unsqueeze(-1).repeat(spectrogram.shape[0], 1, spectrogram.shape[-1])
+            noisy_data = spectrogram + noisy_data
+            noisy_data.requires_grad = True
+            noisy_waveform = self.from_spectrogram(noisy_data)
+            noisy_label = self.hubert(noisy_waveform).logits.max()
+            self.hubert.zero_grad()
+            noisy_label.backward()
+            noisy_gradient = noisy_data.grad.clone().squeeze()
+            gradient_list += [noisy_gradient]
+        
+        saliency_map = torch.mean(torch.stack(gradient_list), dim=0).detach().abs().cpu()
 
-        # TODO: compute saliency map
+        # prepare everything for client
+
+        power_spectrogram = torch.real(spectrogram).pow(2) + torch.imag(spectrogram).pow(2)
 
         return {
-            "waveform": [],
-            "spectrogram": [],
-            "saliency": [],
-            "logits": [],
-            "labels": []
+            "waveform": waveform.tolist(),
+            "spectrogram": power_spectrogram.tolist(),
+            "saliency": saliency_map.tolist(),
+            "logits": logits.tolist(),
+            "labels": ["Neutral", "Happy", "Angry", "Sad"]
         }
 
 #
