@@ -9,13 +9,13 @@ import numpy as np
 import cv2
 import torch
 import torchaudio
-
-from transformers import HubertForSequenceClassification
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+from transformers import HubertForSequenceClassification, ViTImageProcessor, ViTForImageClassification, ViTFeatureExtractor
 
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
-
+from PIL import Image
 import av
 from av.audio.frame import AudioFrame
 from av.video.frame import VideoFrame
@@ -40,25 +40,57 @@ class VideoTransformTrack(MediaStreamTrack):
     def __init__(self, track):
         super().__init__()
         self.track = track
+        self.model_path = 'xacer/vit-base-patch16-224-fatigue'
+        self.face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+        
+        self.processor = ViTImageProcessor.from_pretrained(self.model_path)
+        self.model = ViTForImageClassification.from_pretrained(self.model_path,num_labels=2,ignore_mismatched_sizes=True)
+        self.feature_extractor = ViTFeatureExtractor.from_pretrained(self.model_path) 
+        self.image_mean, self.image_std = self.processor.image_mean, self.processor.image_std
 
-        # TODO: Initialize OpenCV classifiers and Hugging Face models
+        self.transform = Compose([
 
-    
+            Resize((224,224)),
+            ToTensor(),
+            Normalize(mean=self.image_mean,std=self.image_std)
+
+        ])
+        self.class_value = None
+        
+
+    def crop_bounding_box(self, img, x, y, w, h):
+        return img[y:y+h,x:x+w]
+
     async def recv(self):
         # Retrieve the next input frame
         frame: VideoFrame = await self.track.recv()
         img: np.ndarray = frame.to_ndarray(format="bgr24")
-
+    
         # TODO: Detect if a face is present in the image
-
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(self.gray, 1.1,4)
         # TODO: Crop and reshape the bounding box to 224 x 224
+        for (x,y,w,h) in faces:
+            cv2.rectangle(frame,(x,y),(x+w,y+h),(255,0,0),2)
+            cropped_image = VideoTransformTrack.instance.crop_bounding_box(frame,x,y,w,h)
+            cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+            cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_GRAY2RGB)
+            cropped_pil = Image.fromarray(cropped_image)
+            transformed_pil = self.transform(cropped_pil)
+            input_tensor = transformed_pil.unsqueeze(0)
 
         # TODO: Pass face image into vision transformer model
-
+            with torch.no_grad():
+                outputs = self.model(input_tensor)
+            predicted_class = torch.argmax(outputs.logits).item()
+            if predicted_class == 1:
+                self.class_value = "Active"
+            elif predicted_class == 0:
+                self.class_value = "Fatigued"
         # TODO: Compute saliency map for face
 
         # TODO: Draw bounding box and saliency map onto image
-
+        cv2.putText(img,f'{self.class_value}',(x,y),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,0),2)
         # Reconstruct and return the new frame
         new_frame = VideoFrame.from_ndarray(img, format="bgr24")
         new_frame.pts = frame.pts
