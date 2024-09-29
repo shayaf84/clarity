@@ -189,6 +189,10 @@ class AudioAnalyzer:
         self.model_path = "openai/whisper-tiny.en"
         self.processor = AutoProcessor.from_pretrained(self.model_path)
         self.model = WhisperForConditionalGeneration.from_pretrained(self.model_path).cuda()
+
+        from transformers import pipeline
+        self.faster_whisper = pipeline("automatic-speech-recognition", "openai/whisper-tiny", torch_dtype=torch.float16, device="cuda:0")
+
         AudioAnalyzer.instance = self
 
     def run_audio_analysis(self, filename: str, output_queue: queue.Queue):
@@ -199,12 +203,7 @@ class AudioAnalyzer:
         waveform = waveform[0:1]
         waveform: torch.Tensor = resampler.forward(waveform).cuda()
 
-        
-        # inputs = self.processor(waveform, return_tensors='pt')
-        # input_features = inputs.input_features
-        # generated_ids = self.model.generate(inputs = input_features)
-        # transcription = self.processor.batch_decode(generated_ids, skip_special_tokens = True)[0]
-        
+        all_text = self.faster_whisper(filename)["text"]        
 
         # obtain initial diagnosis
         with torch.no_grad():
@@ -291,7 +290,7 @@ class AudioAnalyzer:
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"],
-            "transcription": None
+            "transcription": all_text
         })
 
     async def run_audio_analysis_threaded(self, filename: str):
