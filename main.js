@@ -18,6 +18,8 @@ document.getElementById("stop").onclick = () => {
         fetch("/stop").then(r => r.json()).then(result => {
             console.log(result);
 
+            document.getElementById("transcription").textContent = result["transcription"];
+
             const plotCanvas = document.createElement("canvas");
             plotCanvas.width = result["spectrogramWidth"];
             plotCanvas.height = result["spectrogramHeight"];

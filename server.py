@@ -203,7 +203,8 @@ class AudioAnalyzer:
         waveform = waveform[0:1]
         waveform: torch.Tensor = resampler.forward(waveform).cuda()
 
-        all_text = self.faster_whisper(filename)["text"]        
+        all_text: str = self.faster_whisper(filename)["text"]        
+        all_text = all_text.strip()
 
         # obtain initial diagnosis
         with torch.no_grad():
@@ -230,6 +231,7 @@ class AudioAnalyzer:
         
         saliency_map = torch.mean(torch.stack(gradient_list), dim=0).detach().abs()
         saliency_map = self.mel_scale.forward(saliency_map)
+        saliency_map = torch.flip(saliency_map, (1,))
 
         blur_fn = torchvision.transforms.GaussianBlur(15, sigma=(0.1, 2)).cuda()
         saliency_map = blur_fn(blur_fn(saliency_map.unsqueeze(0))).squeeze().cpu()
@@ -302,6 +304,7 @@ class AudioAnalyzer:
             await asyncio.sleep(0.1)
         
         return out_queue.get()
+
 #
 # LOGIC FOR WEBRTC VIDEO AND AUDIO STREAMING
 #
