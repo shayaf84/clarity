@@ -4,6 +4,8 @@ import os
 import uuid
 import logging
 import av.container
+import threading
+import queue
 
 import numpy as np
 import cv2
@@ -74,7 +76,7 @@ class VideoTransformTrack(MediaStreamTrack):
             cv2.rectangle(outgoing_image,(x,y),(x+w,y+h),(255,0,0),2)
             
             # TODO: Pass face image into vision transformer model
-            if self.frame_count % 6 == 0:
+            if self.frame_count % 12 == 0:
                 cropped_image = self.crop_bounding_box(outgoing_image,x,y,w,h)
                 cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
                 cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_GRAY2RGB)
@@ -181,8 +183,9 @@ class AudioAnalyzer:
 
         AudioAnalyzer.instance = self
 
-    def run_audio_analysis(self, filename: str):
+    def run_audio_analysis(self, filename: str, output_queue: queue.Queue):
         # load audio file
+
         waveform, samplerate = torchaudio.load(filename)
         resampler = torchaudio.transforms.Resample(orig_freq=samplerate, new_freq=16000)
         waveform = waveform[0:1]
@@ -226,7 +229,7 @@ class AudioAnalyzer:
         power_spectrogram = cv2.applyColorMap(power_spectrogram, cv2.COLORMAP_VIRIDIS)
         power_spectrogram = cv2.cvtColor(power_spectrogram, cv2.COLOR_RGB2RGBA)
 
-        return {
+        output_queue.put({
             "waveform": waveform.tolist(),
             "spectrogramImageData": power_spectrogram.flatten().tolist(),
             "spectrogramHeight": power_spectrogram.shape[0],
@@ -234,8 +237,17 @@ class AudioAnalyzer:
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"]
-        }
+        })
 
+    async def run_audio_analysis_threaded(self, filename: str):
+        out_queue = queue.Queue()
+        task = threading.Thread(target=self.run_audio_analysis, args=(filename, out_queue))
+        task.start()
+
+        while task.is_alive():
+            await asyncio.sleep(0.1)
+        
+        return out_queue.get()
 #
 # LOGIC FOR WEBRTC VIDEO AND AUDIO STREAMING
 #
@@ -258,7 +270,7 @@ async def post_start_recording(request):
 
 async def get_stop_recording(request):
     saved_filename = CustomMediaRecorder.instance.stop_recording()
-    analysis = AudioAnalyzer.instance.run_audio_analysis(saved_filename)
+    analysis = await AudioAnalyzer.instance.run_audio_analysis_threaded(saved_filename)
     return web.Response(content_type="application/json", text=json.dumps(analysis))
 
 async def post_offer(request):
