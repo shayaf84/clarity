@@ -20,6 +20,17 @@ document.getElementById("stop").onclick = () => {
 
             document.getElementById("transcription").textContent = result["transcription"];
 
+            let maxLogit = -999;
+            let maxLabel = 0;
+            for (let i = 0; i < 4; i ++) {
+                if (result["logits"][0][i] > maxLogit) {
+                    maxLogit = result["logits"][0][i];
+                    maxLabel = result["labels"][i];
+                }
+            }
+
+            document.getElementById("label").textContent = maxLabel;
+
             const plotCanvas = document.createElement("canvas");
             plotCanvas.width = result["spectrogramWidth"];
             plotCanvas.height = result["spectrogramHeight"];
