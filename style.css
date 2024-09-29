@@ -1,16 +1,60 @@
 * {
+    --bg-color: rgb(15, 15, 15);
+    --bg-color-2: rgb(30, 30, 30);
+    --light-text: rgb(240, 240, 240);
+
     margin: 0;
     padding: 0;
     overflow: hidden;
+    background-color: var(--bg-color);
+    text-align: center;
+    position: relative;
+}
+
+div {
+    overflow: visible;
 }
 
 main {
     width: 100vw;
     height: 100vh;
-    border: 1px solid red;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr;
+    grid-template-rows: auto 1fr auto;
+    align-items: center;
+    justify-content: start;
+    
+}
+
+main > * {
+    /* border: 1px solid red; */
+    margin: 15px;
+    background-color: var(--bg-color-2);
+    border-radius: 5px;
+    box-shadow: 0px 0px 5px 5px black;
+}
+
+
+h1 {
+    padding: 15px;
+    color: var(--light-text);
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 100;
+    text-shadow: 0 0 5px 5px rgb(240, 240, 240);
+    font-size: large;
+}
+
+p {
+    color: var(--light-text)
+}
+
+.annotation {
+    position: absolute;
+    left: 0px;
+    top: -20px;
+    color: var(--light-text);
+    padding-bottom: 1px;
+    border-bottom: 0.5px solid var(--light-text);
 }
 
 .column {
@@ -26,8 +70,9 @@ main {
 }
 
 video {
-    margin: 3rem;
+    margin: 10px auto;
     border: 1px solid blue;
+    width: 90%;
 }
 
 canvas {
@@ -36,6 +81,23 @@ canvas {
     width: 75%;
     height: 400px;
 }
+
+/* STYLES FOR SPECTROGRAM HOLDER */
+#spectrogram-container {
+    height: 200px;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+    background-position: center;
+    /* background-image: url("loading_cool.webp"); */
+    background-blend-mode: soft-light;
+    width: 200px;
+    height: 100px;
+    margin: 25px auto;
+    box-shadow: 0 0 25px 5px black;
+}
+
+/* STYLES FOR RECORD BUTTONS */
 
 #speech-button {
     background: none;
@@ -55,6 +117,8 @@ canvas {
 #speech-button:hover {
     border-radius: 50%;
 }
+
+/* STYLES FOR LOADING SCREEN */
 
 #cover-background {
     background-color: rgb(66, 66, 66);
@@ -84,15 +148,6 @@ canvas {
     animation-iteration-count: infinite;
     animation-direction: alternate;
     transition: 2s ease;
-}
-
-.cover-finished {
-    width: 1000vw;
-    height: 1000vh;
-}
-
-.cover-invisible {
-    opacity: 0;
 }
 
 @keyframes loading {

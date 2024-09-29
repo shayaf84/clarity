@@ -7,23 +7,49 @@
     <title>Document</title>
 </head>
 <body>
-    <main>
-        <!-- Left column -->
-        <div class="column">
-            <video id="video" autoplay="true" playsinline="true"></video>
-        </div>
-        <!-- Right column -->
-        <div class="column">
-            <div class="row">
-                <canvas id="canvas"></canvas>
-            </div>
-            <div class="row">
-                <button id="speech-button"></button>
-            </div>
-        </div>
-    </main>
+    <div class="column">
 
+        
+        
+
+        <main>
+            <h1>Visual Analysis</h1>
+
+            <h1>
+                Speech Analysis 
+            </h1>
+        
+            <div>
+                <video id="video" autoplay="true" playsinline="true">
+                </video>
+
+                <p class="annotation">
+                    Visual analysis
+                </p>        
+            </div>
+
+            <div>
+                <div id="spectrogram-container">
+                    
+                </div>
+
+                <p class="annotation">
+                    Audio Spectrogram
+                </p>
+            </div>
+
+            <p>
+                Analysis of visual
+            </p>
+
+            <p>Analysis of speech</p>
+
+        </main>
+
+    </div>
+    
     <!-- Loading screen -->
+
     <div id="cover-background">
         <div id="cover-circle"></div>
     </div>

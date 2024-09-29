@@ -247,7 +247,7 @@ class AudioAnalyzer:
             "spectrogramWidth": mel_spectrogram.shape[1],
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
-            "labels": ["Neutral", "Happy", "Angry", "Sad"]
+            "labels": ["Neutral", "Happy", "Angry", "Sad"],
             "transcription": transcription
         })
 
