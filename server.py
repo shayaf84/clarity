@@ -12,8 +12,7 @@ import cv2
 import torch
 import torchaudio
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
-from transformers import HubertForSequenceClassification, ViTImageProcessor, ViTForImageClassification, ViTFeatureExtractor
-
+from transformers import AutoProcessor, WhisperForConditionalGeneration, HubertForSequenceClassification, ViTImageProcessor, ViTForImageClassification, ViTFeatureExtractor
 from aiohttp import web
 from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaRelay
@@ -181,7 +180,9 @@ class AudioAnalyzer:
         self.mel_scale = torchaudio.transforms.MelScale(n_mels=128, n_stft=513).cuda()
 
         self.noise_rescale = 1.0 / torch.linspace(1.0, 16.0, self.to_spectrogram.n_fft // 2 + 1).cuda()
-
+        self.model_path = "openai/whisper-tiny.en"
+        self.processor = AutoProcessor.from_pretrained(self.model_path)
+        self.model = WhisperForConditionalGeneration.from_pretrained(self.model_path)
         AudioAnalyzer.instance = self
 
     def run_audio_analysis(self, filename: str, output_queue: queue.Queue):
@@ -191,6 +192,12 @@ class AudioAnalyzer:
         resampler = torchaudio.transforms.Resample(orig_freq=samplerate, new_freq=16000)
         waveform = waveform[0:1]
         waveform: torch.Tensor = resampler.forward(waveform).cuda()
+
+        inputs = self.processor(waveform, return_tensors='pt')
+        input_features = inputs.input_features
+        generated_ids = self.model.generate(inputs = input_features)
+        transcription = self.processor.batch_decode(generated_ids, skip_special_tokens = True)[0]
+        
 
         # obtain initial diagnosis
         with torch.no_grad():
@@ -241,6 +248,7 @@ class AudioAnalyzer:
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"]
+            "transcription": transcription
         })
 
     async def run_audio_analysis_threaded(self, filename: str):
