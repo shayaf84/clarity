@@ -55,3 +55,51 @@ canvas {
 #speech-button:hover {
     border-radius: 50%;
 }
+
+#cover-background {
+    background-color: rgb(66, 66, 66);
+    width: 100vw;
+    height: 100vh;
+    top: 0;
+    left: 0;
+    opacity: 100%;
+    position: absolute;
+    transition: 1s ease;
+}
+
+#cover-circle {
+    background-color: rgb(99, 99, 99);
+    width: 30vh;
+    height: 30vh;
+    border-radius: 50%;
+    left: 50vw;
+    top: 50vh;
+    opacity: 100%;
+    transform: translate(-50%, -50%);
+    position: absolute;
+    animation-name: loading;
+    animation-duration: 2s;
+    animation-timing-function: ease-in-out;
+    animation-play-state: running;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+    transition: 2s ease;
+}
+
+.cover-finished {
+    width: 1000vw;
+    height: 1000vh;
+}
+
+.cover-invisible {
+    opacity: 0;
+}
+
+@keyframes loading {
+    0% {
+        transform: translate(-50%, -50%) translate(-40%, 0%);
+    }
+    100% {
+        transform: translate(-50%, -50%) translate(40%, 0%);
+    }
+}

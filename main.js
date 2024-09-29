@@ -1,5 +1,6 @@
 /* LOGIC FOR NORMAL BROWSER UTILITY */
 
+
 /* LOGIC FOR UPDATING CANVAS ELEMENTS */
 
 /** @type {HTMLButtonElement} */
@@ -144,4 +145,21 @@ class WebRTCManager {
 
 /* Let's light this candle! */
 
-(new WebRTCManager()).start().then(() => console.log("Connected!"));
+(new WebRTCManager()).start().then(() => {
+    console.log("Connected!");
+
+    setTimeout(() => {
+        const coverCircle = document.getElementById("cover-circle");
+        const coverBackground = document.getElementById("cover-background");
+
+        coverCircle.style.width = "1000vw";
+        coverCircle.style.height = "1000vw";
+        coverCircle.style.opacity = "0%";
+        coverBackground.style.opacity = "0%";
+
+        setTimeout(() => {
+            coverCircle.style.display = "none";
+            coverBackground.style.display = "none";
+        }, 1000);
+    }, 1000);
+});
