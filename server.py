@@ -6,11 +6,17 @@ import logging
 import av.container
 import threading
 import queue
+import io
+
+import matplotlib.cm
+import matplotlib.colors
+import matplotlib.pyplot as plt
 
 import numpy as np
 import cv2
 import torch
 import torchaudio
+import torchvision
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from transformers import AutoProcessor, WhisperForConditionalGeneration, HubertForSequenceClassification, ViTImageProcessor, ViTForImageClassification, ViTFeatureExtractor
 from aiohttp import web
@@ -182,7 +188,7 @@ class AudioAnalyzer:
         self.noise_rescale = 1.0 / torch.linspace(1.0, 16.0, self.to_spectrogram.n_fft // 2 + 1).cuda()
         self.model_path = "openai/whisper-tiny.en"
         self.processor = AutoProcessor.from_pretrained(self.model_path)
-        self.model = WhisperForConditionalGeneration.from_pretrained(self.model_path)
+        self.model = WhisperForConditionalGeneration.from_pretrained(self.model_path).cuda()
         AudioAnalyzer.instance = self
 
     def run_audio_analysis(self, filename: str, output_queue: queue.Queue):
@@ -193,10 +199,11 @@ class AudioAnalyzer:
         waveform = waveform[0:1]
         waveform: torch.Tensor = resampler.forward(waveform).cuda()
 
-        inputs = self.processor(waveform, return_tensors='pt')
-        input_features = inputs.input_features
-        generated_ids = self.model.generate(inputs = input_features)
-        transcription = self.processor.batch_decode(generated_ids, skip_special_tokens = True)[0]
+        
+        # inputs = self.processor(waveform, return_tensors='pt')
+        # input_features = inputs.input_features
+        # generated_ids = self.model.generate(inputs = input_features)
+        # transcription = self.processor.batch_decode(generated_ids, skip_special_tokens = True)[0]
         
 
         # obtain initial diagnosis
@@ -212,17 +219,21 @@ class AudioAnalyzer:
         # compute saliency map
         gradient_list = []
         for i in range(10):
-            noisy_data = torch.randn_like(spectrogram) * 0.01 * self.noise_rescale.unsqueeze(0).unsqueeze(-1).repeat(spectrogram.shape[0], 1, spectrogram.shape[-1])
+            noisy_data = torch.randn_like(spectrogram) * 0.1 * self.noise_rescale.unsqueeze(0).unsqueeze(-1).repeat(spectrogram.shape[0], 1, spectrogram.shape[-1])
             noisy_data = spectrogram + noisy_data
             noisy_data.requires_grad = True
             noisy_waveform = self.from_spectrogram(noisy_data)
-            noisy_label = self.hubert(noisy_waveform).logits.max()
+            noisy_label = self.hubert(noisy_waveform).logits[..., 3]
             self.hubert.zero_grad()
             noisy_label.backward()
-            noisy_gradient = noisy_data.grad.clone().squeeze()
+            noisy_gradient = noisy_data.grad.clone().squeeze() * self.noise_rescale.unsqueeze(-1).repeat(1, spectrogram.shape[-1])
             gradient_list += [noisy_gradient]
         
-        saliency_map = torch.mean(torch.stack(gradient_list), dim=0).detach().abs().cpu()
+        saliency_map = torch.mean(torch.stack(gradient_list), dim=0).detach().abs()
+        saliency_map = self.mel_scale.forward(saliency_map)
+
+        blur_fn = torchvision.transforms.GaussianBlur(15, sigma=(0.1, 2)).cuda()
+        saliency_map = blur_fn(blur_fn(saliency_map.unsqueeze(0))).squeeze().cpu()
 
         # prepare everything for client
 
@@ -237,18 +248,50 @@ class AudioAnalyzer:
         mel_spectrogram = mel_spectrogram * 255
         mel_spectrogram = mel_spectrogram.cpu().numpy().astype(np.uint8)
 
-        mel_spectrogram = cv2.applyColorMap(mel_spectrogram, cv2.COLORMAP_MAGMA)
-        mel_spectrogram = cv2.cvtColor(mel_spectrogram, cv2.COLOR_BGR2RGBA)
+        # mel_spectrogram = cv2.applyColorMap(mel_spectrogram, cv2.COLORMAP_MAGMA)
+        # mel_spectrogram = cv2.cvtColor(mel_spectrogram, cv2.COLOR_BGR2RGBA)
+
+        plt.style.use("dark_background")
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.imshow(mel_spectrogram, cmap="inferno", origin="lower")
+
+        cmap2 = matplotlib.cm.get_cmap("viridis")
+        cmap2._init()
+        alphas = np.linspace(0, 1.0, cmap2.N+3)
+        cmap2._lut[:,-1] = alphas
+
+        ax.imshow(
+            saliency_map, 
+            cmap=cmap2, 
+            interpolation="bilinear",
+            origin="lower"
+        )
+        ax.set_xlabel("Time (s)")
+        locs, labels = plt.xticks()
+        labels = [round(float(item)*256/16000,1) for item in locs]        
+        plt.xticks(locs, labels)
+        plt.xlim([0, mel_spectrogram.shape[-1]])
+        ax.set_ylabel("Frequency (log)")
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=90, bbox_inches='tight')
+        buf.seek(0)
+        data = np.frombuffer(buf.getvalue(), dtype=np.uint8)
+        buf.close()
+        data = cv2.imdecode(data, 1)
+        data = cv2.cvtColor(data, cv2.COLOR_BGR2RGBA)
 
         output_queue.put({
             "waveform": waveform.tolist(),
-            "spectrogramImageData": mel_spectrogram.flatten().tolist(),
-            "spectrogramHeight": mel_spectrogram.shape[0],
-            "spectrogramWidth": mel_spectrogram.shape[1],
+            "spectrogramImageData": data.flatten().tolist(),
+            "spectrogramHeight": data.shape[0],
+            "spectrogramWidth": data.shape[1],
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"],
-            "transcription": transcription
+            "transcription": None
         })
 
     async def run_audio_analysis_threaded(self, filename: str):

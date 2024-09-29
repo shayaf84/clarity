@@ -20,7 +20,7 @@ main {
     height: 100vh;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: 1fr;
     align-items: center;
     justify-content: start;
     
@@ -48,13 +48,22 @@ p {
     color: var(--light-text)
 }
 
+button {
+    color: var(--light-text);
+    margin: 5px;
+    padding: 2px;
+}
+
 .annotation {
     position: absolute;
     left: 0px;
     top: -20px;
+    width: 100%;
+    text-align: center;
     color: var(--light-text);
     padding-bottom: 1px;
     border-bottom: 0.5px solid var(--light-text);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .column {
@@ -71,30 +80,25 @@ p {
 
 video {
     margin: 10px auto;
-    border: 1px solid blue;
     width: 90%;
-}
-
-canvas {
-    margin: 3rem;
-    border: 1px solid green;
-    width: 75%;
-    height: 400px;
 }
 
 /* STYLES FOR SPECTROGRAM HOLDER */
 #spectrogram-container {
-    height: 200px;
     display: flex;
     justify-content: center;
-    overflow: hidden;
-    background-position: center;
-    /* background-image: url("loading_cool.webp"); */
-    background-blend-mode: soft-light;
-    width: 200px;
-    height: 100px;
     margin: 25px auto;
-    box-shadow: 0 0 25px 5px black;
+    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    white-space: nowrap;
+    max-width: 50vw;
+}
+
+#spectrogram-container > canvas {
+    justify-self: center;
+    box-shadow: 0 0 5px 5px black;
+    min-height: 100%;
 }
 
 /* STYLES FOR RECORD BUTTONS */
@@ -156,5 +160,14 @@ canvas {
     }
     100% {
         transform: translate(-50%, -50%) translate(40%, 0%);
+    }
+}
+
+@keyframes plotFade {
+    0% {
+        transform: scale(0%);
+    }
+    100% {
+        transform: scale(100%);
     }
 }

@@ -5,6 +5,42 @@
 
 // let isRecording = false;
 
+let isRecording = false;
+document.getElementById("play").onclick = () => {
+    if (!isRecording) {
+        isRecording = true;
+        fetch("/start", { method: "POST" }).then(console.log("Started recording!"));
+    }
+};
+document.getElementById("stop").onclick = () => {
+    if (isRecording) {
+        isRecording = false;
+        fetch("/stop").then(r => r.json()).then(result => {
+            console.log(result);
+
+            const plotCanvas = document.createElement("canvas");
+            plotCanvas.width = result["spectrogramWidth"];
+            plotCanvas.height = result["spectrogramHeight"];
+            const ctx = plotCanvas.getContext("2d");
+
+            const imageData = ctx.createImageData(result["spectrogramWidth"], result["spectrogramHeight"]);
+            imageData.data.set(result["spectrogramImageData"]);
+
+            ctx.putImageData(imageData, 0, 0);
+
+            const container = document.getElementById("spectrogram-container");
+
+            plotCanvas.style.width = plotCanvas.width + "px";
+            plotCanvas.style.height = plotCanvas.height + "px";
+
+            plotCanvas.style.animationName = "plotFade";
+            plotCanvas.style.animationDuration = "0.5s";
+
+            container.appendChild(plotCanvas);
+        });
+    }
+};
+
 // recordButton.onclick = () => {
 //     if (isRecording) {
 //         fetch("/stop").then(r => r.json()).then(() => {
@@ -120,22 +156,23 @@ class WebRTCManager {
 }
 
 /* Let's light this candle! */
-
-(new WebRTCManager()).start().then(() => {
-    console.log("Connected!");
-
-    setTimeout(() => {
-        const coverCircle = document.getElementById("cover-circle");
-        const coverBackground = document.getElementById("cover-background");
-
-        coverCircle.style.width = "1000vw";
-        coverCircle.style.height = "1000vw";
-        coverCircle.style.opacity = "0%";
-        coverBackground.style.opacity = "0%";
+if (true) {
+    (new WebRTCManager()).start().then(() => {
+        console.log("Connected!");
 
         setTimeout(() => {
-            coverCircle.style.display = "none";
-            coverBackground.style.display = "none";
+            const coverCircle = document.getElementById("cover-circle");
+            const coverBackground = document.getElementById("cover-background");
+
+            coverCircle.style.width = "1000vw";
+            coverCircle.style.height = "1000vw";
+            coverCircle.style.opacity = "0%";
+            coverBackground.style.opacity = "0%";
+
+            setTimeout(() => {
+                coverCircle.style.display = "none";
+                coverBackground.style.display = "none";
+            }, 1000);
         }, 1000);
-    }, 1000);
-});
+    });
+}

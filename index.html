@@ -12,13 +12,7 @@
         
         
 
-        <main>
-            <h1>Visual Analysis</h1>
-
-            <h1>
-                Speech Analysis 
-            </h1>
-        
+        <main>        
             <div>
                 <video id="video" autoplay="true" playsinline="true">
                 </video>
@@ -29,31 +23,35 @@
             </div>
 
             <div>
+                <div class="row">
+                    <button id="play">
+                        Begin recording
+                    </button>
+                    <button id="stop">
+                        Stop recording
+                    </button>
+                </div>
+
                 <div id="spectrogram-container">
-                    
+                
                 </div>
 
                 <p class="annotation">
-                    Audio Spectrogram
+                    Audio analysis
                 </p>
             </div>
-
-            <p>
-                Analysis of visual
-            </p>
-
-            <p>Analysis of speech</p>
 
         </main>
 
     </div>
     
     <!-- Loading screen -->
-
+    
+    
     <div id="cover-background">
         <div id="cover-circle"></div>
     </div>
-
+    
     <script src="main.js"></script>
 </body>
 </html>
