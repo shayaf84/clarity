@@ -176,8 +176,9 @@ class AudioAnalyzer:
     def __init__(self):
         # TODO: load Hugging Face models
         self.hubert = HubertForSequenceClassification.from_pretrained("superb/hubert-base-superb-er").cuda()
-        self.to_spectrogram = torchaudio.transforms.Spectrogram(return_complex=True, power=None).cuda()
-        self.from_spectrogram = torchaudio.transforms.InverseSpectrogram().cuda()
+        self.to_spectrogram = torchaudio.transforms.Spectrogram(n_fft=1024,return_complex=True, power=None, hop_length=256).cuda()
+        self.from_spectrogram = torchaudio.transforms.InverseSpectrogram(n_fft=1024, hop_length=256).cuda()
+        self.mel_scale = torchaudio.transforms.MelScale(n_mels=128, n_stft=513).cuda()
 
         self.noise_rescale = 1.0 / torch.linspace(1.0, 16.0, self.to_spectrogram.n_fft // 2 + 1).cuda()
 
@@ -221,19 +222,22 @@ class AudioAnalyzer:
         # rescale
         power_spectrogram = torch.real(spectrogram).pow(2) + torch.imag(spectrogram).pow(2)
         power_spectrogram = power_spectrogram.squeeze()
-        power_spectrogram /= 2
-        power_spectrogram = power_spectrogram.clip(0.0, 1.0)
-        power_spectrogram = power_spectrogram * 255
-        power_spectrogram = power_spectrogram.cpu().numpy().astype(np.uint8)
 
-        power_spectrogram = cv2.applyColorMap(power_spectrogram, cv2.COLORMAP_VIRIDIS)
-        power_spectrogram = cv2.cvtColor(power_spectrogram, cv2.COLOR_RGB2RGBA)
+        mel_spectrogram = self.mel_scale.forward(power_spectrogram)
+        mel_spectrogram = mel_spectrogram.clip(min=1e-5)
+        mel_spectrogram = mel_spectrogram.log10()
+        mel_spectrogram = (mel_spectrogram - mel_spectrogram.min()) / (mel_spectrogram.max() - mel_spectrogram.min())
+        mel_spectrogram = mel_spectrogram * 255
+        mel_spectrogram = mel_spectrogram.cpu().numpy().astype(np.uint8)
+
+        mel_spectrogram = cv2.applyColorMap(mel_spectrogram, cv2.COLORMAP_MAGMA)
+        mel_spectrogram = cv2.cvtColor(mel_spectrogram, cv2.COLOR_BGR2RGBA)
 
         output_queue.put({
             "waveform": waveform.tolist(),
-            "spectrogramImageData": power_spectrogram.flatten().tolist(),
-            "spectrogramHeight": power_spectrogram.shape[0],
-            "spectrogramWidth": power_spectrogram.shape[1],
+            "spectrogramImageData": mel_spectrogram.flatten().tolist(),
+            "spectrogramHeight": mel_spectrogram.shape[0],
+            "spectrogramWidth": mel_spectrogram.shape[1],
             "saliency": saliency_map.tolist(),
             "logits": logits.tolist(),
             "labels": ["Neutral", "Happy", "Angry", "Sad"]
